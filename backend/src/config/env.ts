@@ -7,7 +7,10 @@ const envSchema = z.object({
   COOKIE_MAX_AGE_DAYS: z.coerce.number().positive().default(7),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("SiteTracker <onboarding@resend.dev>"),
-  FRONTEND_URL: z.string().min(1, "FRONTEND_URL is required"),
+  FRONTEND_URL: z
+    .string()
+    .min(1, "FRONTEND_URL is required")
+    .transform((url) => url.replace(/\/+$/, "")),
   PORT: z.coerce.number().positive().default(4000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 

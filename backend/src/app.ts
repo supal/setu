@@ -49,6 +49,7 @@ export function createApp() {
 
   if (env.STORAGE_DRIVER === "supabase") {
     const tusServer = createTusServer();
+    app.all(UPLOADS_PATH, tusServer.handle.bind(tusServer));
     app.all(`${UPLOADS_PATH}/*`, tusServer.handle.bind(tusServer));
   }
 
