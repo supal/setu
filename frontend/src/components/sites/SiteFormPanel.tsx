@@ -207,6 +207,17 @@ export function SiteFormPanel({
         <CoordinateField label="Longitude" value={longitude} />
       </div>
 
+      {latitude && longitude && (
+        <a
+          href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="-mt-2 self-start text-xs font-medium text-brand-600 hover:underline"
+        >
+          Open in Google Map ↗
+        </a>
+      )}
+
       <p className="-mt-2 text-xs text-slate-500">Click the map to set or adjust the location.</p>
 
       <div className="h-48 md:hidden">
@@ -245,7 +256,6 @@ function CoordinateField({ label, value }: { label: string; value: string }) {
           <>
             <span>📍</span>
             <span>{Number(value).toFixed(4)}</span>
-            <span className="ml-auto text-xs text-slate-400">Auto-extracted</span>
           </>
         ) : (
           <span className="text-slate-400">Not set</span>

@@ -80,10 +80,12 @@ export function SiteMap({
 
   const hasDraftCoords = draft && draft.latitude != null && draft.longitude != null;
 
+  // When a site is selected (a draft is active), zoom to just that entry rather than
+  // fitting a bounding box around every pin — the other pins stay visible for context,
+  // they just don't drive the viewport anymore.
   const fitPoints = useMemo<[number, number][]>(() => {
-    const points = pins.map((s): [number, number] => [s.latitude, s.longitude]);
-    if (hasDraftCoords) points.push([draft!.latitude!, draft!.longitude!]);
-    return points;
+    if (hasDraftCoords) return [[draft!.latitude!, draft!.longitude!]];
+    return pins.map((s): [number, number] => [s.latitude, s.longitude]);
   }, [pins, hasDraftCoords, draft]);
 
   return (

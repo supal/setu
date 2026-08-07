@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /dev/null -w \"frontend:%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(node drive-zoom-check.mjs)"
+    ]
+  }
+}
