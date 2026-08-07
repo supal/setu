@@ -41,7 +41,10 @@ export function createTusServer() {
     namingFunction: () => randomUUID(),
     // CORS is handled entirely by the app-wide `cors()` middleware in app.ts (which runs
     // before this handler) — suppress tus's own CORS headers so the two don't conflict.
+    // Exception: tus always sets its own Access-Control-Expose-Headers (overwriting app.ts's),
+    // so our custom response header has to be listed here too or the browser blocks reading it.
     allowedOrigins: [],
+    exposedHeaders: ["X-Image-Public-Url"],
     respectForwardedHeaders: true,
     async onIncomingRequest(req) {
       // tus wraps the request in its own Fetch-style Request (see srvx's NodeRequest) — it never
