@@ -105,6 +105,8 @@ export function Sites() {
             latitude={draftLat}
             longitude={draftLng}
             onLatLngChange={handleLatLngChange}
+            onLatitudeInput={setDraftLat}
+            onLongitudeInput={setDraftLng}
             contextSites={sites}
             onSaved={handleSaved}
             onDeleted={handleDeleted}

@@ -6,7 +6,7 @@ const UPLOAD_MODE = import.meta.env.VITE_UPLOAD_MODE ?? "local";
 export const isTusUploadMode = UPLOAD_MODE === "tus";
 
 /**
- * Uploads a file in chunks directly to the backend's tus endpoint (backed by Cloudflare R2),
+ * Uploads a file in chunks directly to the backend's tus endpoint (backed by Supabase Storage),
  * resolving to the finished object's public URL. Only used when VITE_UPLOAD_MODE=tus — in
  * "local" mode the raw File is attached to the site form instead and this isn't called.
  */

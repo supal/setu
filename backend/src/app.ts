@@ -47,7 +47,7 @@ export function createApp() {
   app.use("/api/sites", sitesRoutes);
   app.use("/api/audit-logs", auditLogsRoutes);
 
-  if (env.STORAGE_DRIVER === "r2") {
+  if (env.STORAGE_DRIVER === "supabase") {
     const tusServer = createTusServer();
     app.all(`${UPLOADS_PATH}/*`, tusServer.handle.bind(tusServer));
   }

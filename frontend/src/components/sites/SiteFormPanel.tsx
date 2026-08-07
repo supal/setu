@@ -15,6 +15,8 @@ export function SiteFormPanel({
   latitude,
   longitude,
   onLatLngChange,
+  onLatitudeInput,
+  onLongitudeInput,
   contextSites,
   onSaved,
   onDeleted,
@@ -24,6 +26,8 @@ export function SiteFormPanel({
   latitude: string;
   longitude: string;
   onLatLngChange: (lat: number, lng: number) => void;
+  onLatitudeInput: (value: string) => void;
+  onLongitudeInput: (value: string) => void;
   contextSites: Site[];
   onSaved: (site: Site) => void;
   onDeleted: (id: string) => void;
@@ -203,8 +207,8 @@ export function SiteFormPanel({
       </Select>
 
       <div className="grid grid-cols-2 gap-3">
-        <CoordinateField label="Latitude" value={latitude} />
-        <CoordinateField label="Longitude" value={longitude} />
+        <CoordinateField label="Latitude" value={latitude} onChange={onLatitudeInput} min={-90} max={90} />
+        <CoordinateField label="Longitude" value={longitude} onChange={onLongitudeInput} min={-180} max={180} />
       </div>
 
       {latitude && longitude && (
@@ -247,19 +251,37 @@ export function SiteFormPanel({
   );
 }
 
-function CoordinateField({ label, value }: { label: string; value: string }) {
+function CoordinateField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: number;
+  max: number;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-700">{label}</label>
-      <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-slate-600">
-        {value ? (
-          <>
-            <span>📍</span>
-            <span>{Number(value).toFixed(4)}</span>
-          </>
-        ) : (
-          <span className="text-slate-400">Not set</span>
-        )}
+      <label htmlFor={`site-${label.toLowerCase()}`} className="text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-slate-600 focus-within:border-brand-500 focus-within:bg-surface focus-within:ring-2 focus-within:ring-brand-100">
+        <span>📍</span>
+        <input
+          id={`site-${label.toLowerCase()}`}
+          type="number"
+          step="any"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Not set"
+          className="w-full bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+        />
       </div>
     </div>
   );

@@ -11,12 +11,13 @@ const envSchema = z.object({
   PORT: z.coerce.number().positive().default(4000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  STORAGE_DRIVER: z.enum(["local", "r2"]).default("local"),
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET: z.string().default("site-photos"),
-  R2_PUBLIC_URL: z.string().optional(),
+  STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
+  SUPABASE_PROJECT_REF: z.string().optional(),
+  SUPABASE_S3_ACCESS_KEY_ID: z.string().optional(),
+  SUPABASE_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  SUPABASE_S3_REGION: z.string().optional(),
+  SUPABASE_BUCKET: z.string().default("site-photos"),
+  SUPABASE_PUBLIC_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -31,11 +32,15 @@ export const env = parsed.data;
 export const isProduction = env.NODE_ENV === "production";
 
 if (
-  env.STORAGE_DRIVER === "r2" &&
-  (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.R2_PUBLIC_URL)
+  env.STORAGE_DRIVER === "supabase" &&
+  (!env.SUPABASE_PROJECT_REF ||
+    !env.SUPABASE_S3_ACCESS_KEY_ID ||
+    !env.SUPABASE_S3_SECRET_ACCESS_KEY ||
+    !env.SUPABASE_S3_REGION ||
+    !env.SUPABASE_PUBLIC_URL)
 ) {
   console.error(
-    "STORAGE_DRIVER=r2 requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_PUBLIC_URL"
+    "STORAGE_DRIVER=supabase requires SUPABASE_PROJECT_REF, SUPABASE_S3_ACCESS_KEY_ID, SUPABASE_S3_SECRET_ACCESS_KEY, SUPABASE_S3_REGION, and SUPABASE_PUBLIC_URL"
   );
   process.exit(1);
 }

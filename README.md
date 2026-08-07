@@ -63,15 +63,15 @@ Log in with the seeded admin account, then use **Users → Add New User** to inv
 | `EMAIL_FROM` | From address for outgoing emails |
 | `FRONTEND_URL` | The frontend's origin — used for CORS and links in emails |
 | `PORT` | API port (default 4000) |
-| `STORAGE_DRIVER` | `local` (default, writes to `backend/uploads`, served over a single request) or `r2` (Cloudflare R2, uploaded directly from the browser via a resumable `tus` endpoint — required in production, see below) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` | Only needed when `STORAGE_DRIVER=r2` — Cloudflare dashboard → R2 → Manage API tokens |
+| `STORAGE_DRIVER` | `local` (default, writes to `backend/uploads`, served over a single request) or `supabase` (Supabase Storage, uploaded directly from the browser via a resumable `tus` endpoint — required in production, see below) |
+| `SUPABASE_PROJECT_REF` / `SUPABASE_S3_ACCESS_KEY_ID` / `SUPABASE_S3_SECRET_ACCESS_KEY` / `SUPABASE_S3_REGION` / `SUPABASE_BUCKET` / `SUPABASE_PUBLIC_URL` | Only needed when `STORAGE_DRIVER=supabase` — Supabase dashboard → Project Settings → Storage → S3 Connection |
 
 ### Frontend (`frontend/.env.local`)
 
 | Variable | Purpose |
 |---|---|
 | `VITE_API_URL` | Base URL of the backend API |
-| `VITE_UPLOAD_MODE` | `local` (default, single-request upload — pair with backend `STORAGE_DRIVER=local`) or `tus` (chunked resumable upload straight to R2 — pair with `STORAGE_DRIVER=r2`) |
+| `VITE_UPLOAD_MODE` | `local` (default, single-request upload — pair with backend `STORAGE_DRIVER=local`) or `tus` (chunked resumable upload straight to Supabase Storage — pair with `STORAGE_DRIVER=supabase`) |
 
 ## Deploying for free
 
@@ -81,23 +81,23 @@ Log in with the seeded admin account, then use **Users → Add New User** to inv
 2. Go to **Project Settings → Database → Connection string**, copy the **URI** (use the "Transaction" pooler connection on port 6543 for serverless-friendly pooling).
 3. You'll paste this into Render's `DATABASE_URL` env var below.
 
-### Photo storage — Cloudflare R2
+### Photo storage — Supabase Storage
 
-1. Create a bucket at [Cloudflare dashboard → R2](https://dash.cloudflare.com) (free tier: 10GB storage, no egress fees), e.g. named `site-photos`.
-2. Enable public access on the bucket (bucket **Settings → Public Access → Allow Access**, using the `r2.dev` subdomain it gives you — or attach a custom domain). That base URL is `R2_PUBLIC_URL`.
-3. Create an API token (R2 → **Manage API tokens** → Create, with Object Read & Write on this bucket) — gives you `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`. Your `R2_ACCOUNT_ID` is shown in the R2 dashboard sidebar.
+1. In your Supabase project, go to **Storage** and create a bucket, e.g. named `site-photos`.
+2. Make the bucket public (bucket **Settings → Public bucket**, or via the toggle when creating it). The public base URL is `https://<project-ref>.supabase.co/storage/v1/object/public/site-photos` — that's `SUPABASE_PUBLIC_URL`.
+3. Go to **Project Settings → Storage → S3 Connection** and create an access key — gives you `SUPABASE_S3_ACCESS_KEY_ID` / `SUPABASE_S3_SECRET_ACCESS_KEY` and shows the `SUPABASE_S3_REGION` to use. Your `SUPABASE_PROJECT_REF` is the subdomain in your project's URL (`https://<project-ref>.supabase.co`).
 
 ### Backend — Render
 
 1. Push this repo to GitHub.
 2. In Render, create a new **Blueprint** from the repo — it will pick up `backend/render.yaml`. (Or create a Web Service manually with root directory `backend`, build command `npm ci && npm run build`, start command `npx prisma migrate deploy && npm start`.)
-3. Set the env vars Render prompts for: `DATABASE_URL` (from Supabase), `RESEND_API_KEY`, `EMAIL_FROM`, `FRONTEND_URL` (your Netlify URL, set after step below), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL`. `JWT_SECRET` auto-generates; `STORAGE_DRIVER` defaults to `r2` in `render.yaml` since Render's free disks don't persist uploads across deploys.
+3. Set the env vars Render prompts for: `DATABASE_URL` (from Supabase), `RESEND_API_KEY`, `EMAIL_FROM`, `FRONTEND_URL` (your Netlify URL, set after step below), `SUPABASE_PROJECT_REF`, `SUPABASE_S3_ACCESS_KEY_ID`, `SUPABASE_S3_SECRET_ACCESS_KEY`, `SUPABASE_S3_REGION`, `SUPABASE_PUBLIC_URL`. `JWT_SECRET` auto-generates; `STORAGE_DRIVER` defaults to `supabase` in `render.yaml` since Render's free disks don't persist uploads across deploys.
 4. Deploy. Note the resulting service URL (e.g. `https://sitetracker-backend.onrender.com`).
 
 ### Frontend — Netlify
 
 1. In Netlify, create a new site from the same repo — it will pick up `netlify.toml` at the repo root (base directory `frontend`).
-2. Set env vars: `VITE_API_URL` to your Render backend URL, and `VITE_UPLOAD_MODE=tus` (to match the backend's `STORAGE_DRIVER=r2`).
+2. Set env vars: `VITE_API_URL` to your Render backend URL, and `VITE_UPLOAD_MODE=tus` (to match the backend's `STORAGE_DRIVER=supabase`).
 3. Deploy. Note the resulting site URL (e.g. `https://sitetracker.netlify.app`).
 4. Go back to Render and set `FRONTEND_URL` to this Netlify URL, then redeploy the backend (needed for CORS and for links in emails to point to the right place).
 
@@ -131,7 +131,7 @@ Photo handling happens client-side first: as soon as a photo is selected, the br
 
 How the photo itself gets uploaded depends on `VITE_UPLOAD_MODE`:
 - **`local`** (dev default): the file is sent to the backend in a single request and written to `backend/uploads/`.
-- **`tus`** (production): the file is uploaded in chunks directly from the browser to Cloudflare R2 via a resumable `tus` protocol endpoint (`@tus/server` + `@tus/s3-store`) at `/api/uploads` — a dropped connection resumes rather than restarting. The backend only ever sees the resulting metadata and public URL, never the file bytes.
+- **`tus`** (production): the file is uploaded in chunks directly from the browser to a Supabase Storage bucket (via its S3-compatible API) using a resumable `tus` protocol endpoint (`@tus/server` + `@tus/s3-store`) at `/api/uploads` — a dropped connection resumes rather than restarting. The backend only ever sees the resulting metadata and public URL, never the file bytes.
 
 ## Audit log
 

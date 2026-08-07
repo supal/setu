@@ -48,8 +48,8 @@ const localFormSchema = baseFieldsSchema.extend({
   imageMetadata: z.string().optional(),
 });
 
-// R2/tus mode: the file already landed in R2 via tus, so the JSON body carries the
-// resulting URL + metadata directly instead of a multipart file part.
+// Supabase/tus mode: the file already landed in Supabase Storage via tus, so the JSON
+// body carries the resulting URL + metadata directly instead of a multipart file part.
 const jsonPayloadSchema = baseFieldsSchema.extend({
   imageUrl: z.string().optional(),
   imageMetadata: z.record(z.unknown()).optional(),
@@ -77,7 +77,10 @@ async function resolveSitePayload(req: Request): Promise<SitePayload> {
   }
 
   const data = jsonPayloadSchema.parse(req.body);
-  if (data.imageUrl && (!env.R2_PUBLIC_URL || !data.imageUrl.startsWith(env.R2_PUBLIC_URL))) {
+  if (
+    data.imageUrl &&
+    (!env.SUPABASE_PUBLIC_URL || !data.imageUrl.startsWith(env.SUPABASE_PUBLIC_URL))
+  ) {
     throw new HttpError(400, "imageUrl must point to this app's storage bucket");
   }
   return data;

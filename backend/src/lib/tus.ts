@@ -11,12 +11,12 @@ export function createTusServer() {
   const datastore = new S3Store({
     partSize: 8 * 1024 * 1024,
     s3ClientConfig: {
-      bucket: env.R2_BUCKET,
-      region: "auto",
-      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      bucket: env.SUPABASE_BUCKET,
+      region: env.SUPABASE_S3_REGION!,
+      endpoint: `https://${env.SUPABASE_PROJECT_REF}.supabase.co/storage/v1/s3`,
       credentials: {
-        accessKeyId: env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: env.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: env.SUPABASE_S3_ACCESS_KEY_ID!,
+        secretAccessKey: env.SUPABASE_S3_SECRET_ACCESS_KEY!,
       },
       forcePathStyle: true,
     },
@@ -27,7 +27,7 @@ export function createTusServer() {
     datastore,
     // Flat key, no "/" — a slash in the id changes tus's URL routing scheme and would
     // require also implementing generateUrl/getFileIdFromRequest to match (see @tus/server's
-    // "store files in custom nested directories" docs). R2_BUCKET is already dedicated to
+    // "store files in custom nested directories" docs). SUPABASE_BUCKET is already dedicated to
     // site photos, so a folder prefix isn't needed for organization.
     namingFunction: () => randomUUID(),
     // CORS is handled entirely by the app-wide `cors()` middleware in app.ts (which runs
@@ -50,8 +50,8 @@ export function createTusServer() {
     },
     async onUploadFinish(_req, upload) {
       // Hand the finished object's public URL straight back to the client, so the frontend
-      // doesn't need its own copy of R2_PUBLIC_URL to reconstruct it.
-      return { headers: { "X-Image-Public-Url": `${env.R2_PUBLIC_URL}/${upload.id}` } };
+      // doesn't need its own copy of SUPABASE_PUBLIC_URL to reconstruct it.
+      return { headers: { "X-Image-Public-Url": `${env.SUPABASE_PUBLIC_URL}/${upload.id}` } };
     },
   });
 }

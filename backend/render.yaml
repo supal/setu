@@ -22,17 +22,19 @@ services:
       - key: NODE_ENV
         value: production
       # Render's free web services have an ephemeral filesystem — local uploads
-      # are wiped on every deploy/restart. Use Cloudflare R2 in production; the
+      # are wiped on every deploy/restart. Use Supabase Storage in production; the
       # frontend's VITE_UPLOAD_MODE must be set to "tus" to match.
       - key: STORAGE_DRIVER
-        value: r2
-      - key: R2_ACCOUNT_ID
+        value: supabase
+      - key: SUPABASE_PROJECT_REF
         sync: false
-      - key: R2_ACCESS_KEY_ID
+      - key: SUPABASE_S3_ACCESS_KEY_ID
         sync: false
-      - key: R2_SECRET_ACCESS_KEY
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
         sync: false
-      - key: R2_BUCKET
+      - key: SUPABASE_S3_REGION
+        sync: false
+      - key: SUPABASE_BUCKET
         value: site-photos
-      - key: R2_PUBLIC_URL
+      - key: SUPABASE_PUBLIC_URL
         sync: false
