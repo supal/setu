@@ -1,0 +1,13 @@
+[build]
+  base = "frontend"
+  command = "npm run build"
+  # Relative to `base`, i.e. frontend/dist
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Set VITE_API_URL in the Netlify dashboard (Site settings > Environment variables)
+# to your deployed Render backend URL before building for production.
