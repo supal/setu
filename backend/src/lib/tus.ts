@@ -5,6 +5,15 @@ import { env } from "../config/env";
 import { verifySessionToken } from "../services/auth.service";
 import { SESSION_COOKIE_NAME } from "../middleware/authenticate";
 
+function readCookie(cookieHeader: string, name: string): string | undefined {
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return undefined;
+}
+
 export const UPLOADS_PATH = "/api/uploads";
 
 export function createTusServer() {
@@ -35,11 +44,11 @@ export function createTusServer() {
     allowedOrigins: [],
     respectForwardedHeaders: true,
     async onIncomingRequest(req) {
-      // Cookie-parser already ran as app-level middleware, so `req.cookies` is populated
-      // even though tus sees this request via the raw Node req/res, not an Express Request.
-      const token = (req as unknown as { cookies?: Record<string, string> }).cookies?.[
-        SESSION_COOKIE_NAME
-      ];
+      // tus wraps the request in its own Fetch-style Request (see srvx's NodeRequest) — it never
+      // runs through Express's middleware chain, so cookie-parser's `req.cookies` isn't available
+      // here. Parse the raw `Cookie` header instead.
+      const cookieHeader = req.headers.get("cookie");
+      const token = cookieHeader ? readCookie(cookieHeader, SESSION_COOKIE_NAME) : undefined;
       if (!token) throw { status_code: 401, body: "Unauthorized" };
 
       try {
