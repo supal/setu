@@ -8,7 +8,9 @@ import { assertSiteAccess } from "../lib/assertSiteAccess";
 
 const CONSTRUCTION_STATUSES = ["planned", "in_progress", "completed"] as const;
 
-const filesInclude = { files: { orderBy: { createdAt: "desc" as const } } };
+const filesInclude = {
+  files: { orderBy: [{ isCover: "desc" as const }, { createdAt: "desc" as const }] },
+};
 
 export async function listSites(_req: Request, res: Response) {
   const sites = await prisma.site.findMany({

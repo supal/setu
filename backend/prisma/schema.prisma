@@ -40,11 +40,6 @@ model Site {
   constructionStatus String   @default("planned") @map("construction_status")
   latitude           Float?
   longitude          Float?
-  // Deprecated in favor of `files` — kept until prisma/backfillFiles.ts has copied every
-  // non-null value into a File row and that's been confirmed, then dropped in a follow-up
-  // migration. Not read or written by the app anymore.
-  imageUrl           String?  @map("image_url")
-  imageMetadata      Json?    @map("image_metadata")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
@@ -58,6 +53,13 @@ model File {
   siteId    String   @map("site_id")
   site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
   url       String
+  filename  String
+  mimeType  String   @map("mime_type")
+  // The one image representing this site in the list/map. At most one File per site should
+  // have this set — enforced in files.controller.ts (auto-assigned to the first image
+  // uploaded, auto-transferred to the next remaining image if the cover is deleted), not at
+  // the DB level. Never true for non-image files.
+  isCover   Boolean  @default(false) @map("is_cover")
   metadata  Json?
   createdAt DateTime @default(now()) @map("created_at")
 

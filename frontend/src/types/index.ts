@@ -23,6 +23,9 @@ export interface ImageMetadata {
 export interface SiteFile {
   id: string;
   url: string;
+  filename: string;
+  mimeType: string;
+  isCover: boolean;
   metadata: ImageMetadata | null;
   createdAt: string;
 }

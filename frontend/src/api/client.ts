@@ -47,8 +47,8 @@ export const api = {
   putForm: <T>(path: string, formData: FormData) => request<T>(path, { method: "PUT", body: formData }),
 };
 
-/** Resolves an image URL returned by the API against the API origin, unless it's already absolute (e.g. Supabase Storage). */
-export function resolveImageUrl(url: string | null | undefined) {
+/** Resolves a file URL returned by the API against the API origin, unless it's already absolute (e.g. Supabase Storage). */
+export function resolveFileUrl(url: string | null | undefined) {
   if (!url) return null;
   return url.startsWith("http") ? url : `${API_URL}${url}`;
 }

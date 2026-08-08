@@ -12,10 +12,25 @@ export async function uploadFile(req: Request, res: Response) {
 
   if (!req.file) throw new HttpError(400, "No file provided");
 
+  const isImage = req.file.mimetype.startsWith("image/");
   const url = await uploadToStorage(req.file.buffer, req.file.originalname, req.file.mimetype);
   const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : undefined;
 
-  const file = await prisma.file.create({ data: { siteId: site.id, url, metadata } });
+  // The first image uploaded to a site becomes its cover/thumbnail automatically — never a
+  // non-image file, and never a second image while one's already set.
+  const isCover =
+    isImage && (await prisma.file.count({ where: { siteId: site.id, isCover: true } })) === 0;
+
+  const file = await prisma.file.create({
+    data: {
+      siteId: site.id,
+      url,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      isCover,
+      metadata,
+    },
+  });
 
   await recordAudit({
     actorId: req.user!.id,
@@ -39,6 +54,14 @@ export async function deleteFile(req: Request, res: Response) {
 
   await prisma.file.delete({ where: { id: file.id } });
   await deleteFromStorage(file.url).catch(() => {});
+
+  if (file.isCover) {
+    const nextCover = await prisma.file.findFirst({
+      where: { siteId: site.id, mimeType: { startsWith: "image/" } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (nextCover) await prisma.file.update({ where: { id: nextCover.id }, data: { isCover: true } });
+  }
 
   await recordAudit({
     actorId: req.user!.id,

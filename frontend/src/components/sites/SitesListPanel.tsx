@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { resolveImageUrl } from "../../api/client";
+import { resolveFileUrl } from "../../api/client";
 import type { ConstructionStatus, Site } from "../../types";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -72,37 +72,40 @@ export function SitesListPanel({
           <p className="p-4 text-sm text-slate-500">No sites match your search.</p>
         ) : (
           <ul className="divide-y divide-border">
-            {filtered.map((site) => (
-              <li key={site.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelectSite(site)}
-                  className={`flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-surface-muted ${
-                    selectedSiteId === site.id ? "bg-brand-50" : ""
-                  }`}
-                >
-                  {site.files[0] ? (
-                    <img
-                      src={resolveImageUrl(site.files[0].url) ?? undefined}
-                      alt={site.name}
-                      className="h-10 w-10 shrink-0 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 shrink-0 rounded-lg bg-surface-muted" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium text-slate-900">{site.name}</p>
-                      <Badge tone={STATUS_TONE[site.constructionStatus]}>
-                        {STATUS_LABEL[site.constructionStatus]}
-                      </Badge>
+            {filtered.map((site) => {
+              const cover = site.files.find((f) => f.isCover);
+              return (
+                <li key={site.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectSite(site)}
+                    className={`flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-surface-muted ${
+                      selectedSiteId === site.id ? "bg-brand-50" : ""
+                    }`}
+                  >
+                    {cover ? (
+                      <img
+                        src={resolveFileUrl(cover.url) ?? undefined}
+                        alt={site.name}
+                        className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 shrink-0 rounded-lg bg-surface-muted" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-slate-900">{site.name}</p>
+                        <Badge tone={STATUS_TONE[site.constructionStatus]}>
+                          {STATUS_LABEL[site.constructionStatus]}
+                        </Badge>
+                      </div>
+                      {site.address && <p className="truncate text-xs text-slate-500">{site.address}</p>}
+                      {isAdmin && <p className="truncate text-xs text-slate-400">by {site.user.name}</p>}
                     </div>
-                    {site.address && <p className="truncate text-xs text-slate-500">{site.address}</p>}
-                    {isAdmin && <p className="truncate text-xs text-slate-400">by {site.user.name}</p>}
-                  </div>
-                </button>
-              </li>
-            ))}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

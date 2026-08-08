@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError, resolveImageUrl } from "../../api/client";
+import { api, ApiError, resolveFileUrl } from "../../api/client";
 import { extractClientMetadata } from "../../lib/exif";
 import { compressImage } from "../../lib/compressImage";
 import type { ConstructionStatus, ImageMetadata, Site, SiteFile } from "../../types";
@@ -13,27 +13,39 @@ type PanelMode = { type: "create" } | { type: "edit"; site: Site };
 
 interface StagedFile {
   file: File;
+  filename: string;
+  mimeType: string;
   metadata: ImageMetadata;
-  previewUrl: string;
+  previewUrl: string | null;
 }
 
 interface PendingUpload {
   tempId: string;
-  previewUrl: string;
+  filename: string;
+  previewUrl: string | null;
 }
 
-async function uploadCompressedFile(siteId: string, file: File, metadata: ImageMetadata): Promise<SiteFile> {
+function isImageType(mimeType: string) {
+  return mimeType.startsWith("image/");
+}
+
+async function uploadFile(siteId: string, file: File, metadata: ImageMetadata): Promise<SiteFile> {
   const formData = new FormData();
-  formData.set("image", file);
+  formData.set("file", file);
   formData.set("metadata", JSON.stringify(metadata));
   const res = await api.postForm<{ file: SiteFile }>(`/api/sites/${siteId}/files`, formData);
   return res.file;
 }
 
+// Images get EXIF-extracted (for GPS auto-fill) and compressed to <100KB before upload; other
+// file types (PDFs) aren't images — neither operation applies, so they upload as-is.
 async function prepareFile(original: File) {
+  if (!isImageType(original.type)) {
+    return { file: original, metadata: {} as ImageMetadata, previewUrl: null as string | null };
+  }
   const metadata = await extractClientMetadata(original);
   const compressed = await compressImage(original);
-  return { compressed, metadata };
+  return { file: compressed, metadata, previewUrl: URL.createObjectURL(compressed) };
 }
 
 export function SiteFormPanel({
@@ -67,10 +79,10 @@ export function SiteFormPanel({
   const [address, setAddress] = useState(propSite?.address ?? "");
   const [status, setStatus] = useState<ConstructionStatus>(propSite?.constructionStatus ?? "planned");
 
-  // Set once a site is created mid-session (create mode → some/all staged photos uploaded);
+  // Set once a site is created mid-session (create mode → some/all staged files uploaded);
   // from then on this panel behaves like it's editing that site, even though `mode` prop is
-  // still "create". Lets a partial photo-upload failure keep the panel open for retry instead
-  // of silently losing track of it.
+  // still "create". Lets a partial upload failure keep the panel open for retry instead of
+  // silently losing track of it.
   const [createdSite, setCreatedSite] = useState<Site | null>(null);
   const activeSite = createdSite ?? propSite;
 
@@ -87,38 +99,43 @@ export function SiteFormPanel({
 
   const stagedFilesRef = useRef(stagedFiles);
   stagedFilesRef.current = stagedFiles;
-  useEffect(() => () => stagedFilesRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl)), []);
+  useEffect(
+    () => () => stagedFilesRef.current.forEach((s) => s.previewUrl && URL.revokeObjectURL(s.previewUrl)),
+    []
+  );
 
   async function handleAddFiles(selected: FileList | File[]) {
     if (!canManage) return;
     for (const original of Array.from(selected)) {
-      const { compressed, metadata } = await prepareFile(original);
+      const { file, metadata, previewUrl } = await prepareFile(original);
       if (metadata.gps && !latitude && !longitude) {
         onLatLngChange(metadata.gps.latitude, metadata.gps.longitude);
       }
 
       if (activeSite) {
         const tempId = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(compressed);
-        setPendingUploads((prev) => [...prev, { tempId, previewUrl }]);
+        setPendingUploads((prev) => [...prev, { tempId, filename: original.name, previewUrl }]);
         try {
-          const uploaded = await uploadCompressedFile(activeSite.id, compressed, metadata);
+          const uploaded = await uploadFile(activeSite.id, file, metadata);
           setFiles((prev) => [uploaded, ...prev]);
         } catch (err) {
-          setError(err instanceof ApiError ? err.message : "Failed to upload photo");
+          setError(err instanceof ApiError ? err.message : `Failed to upload ${original.name}`);
         } finally {
           setPendingUploads((prev) => prev.filter((p) => p.tempId !== tempId));
-          URL.revokeObjectURL(previewUrl);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
         }
       } else {
-        setStagedFiles((prev) => [...prev, { file: compressed, metadata, previewUrl: URL.createObjectURL(compressed) }]);
+        setStagedFiles((prev) => [
+          ...prev,
+          { file, filename: original.name, mimeType: file.type, metadata, previewUrl },
+        ]);
       }
     }
   }
 
   function removeStagedFile(index: number) {
     setStagedFiles((prev) => {
-      URL.revokeObjectURL(prev[index].previewUrl);
+      if (prev[index].previewUrl) URL.revokeObjectURL(prev[index].previewUrl!);
       return prev.filter((_, i) => i !== index);
     });
   }
@@ -130,7 +147,7 @@ export function SiteFormPanel({
       await api.delete(`/api/sites/${activeSite.id}/files/${file.id}`);
       setFiles((prev) => prev.filter((f) => f.id !== file.id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete photo");
+      setError(err instanceof ApiError ? err.message : "Failed to delete file");
     } finally {
       setDeletingFileId(null);
     }
@@ -170,19 +187,19 @@ export function SiteFormPanel({
       let failedCount = 0;
       for (const staged of stagedFiles) {
         try {
-          const uploadedFile = await uploadCompressedFile(site.id, staged.file, staged.metadata);
+          const uploadedFile = await uploadFile(site.id, staged.file, staged.metadata);
           uploaded.push(uploadedFile);
           setFiles((prev) => [...prev, uploadedFile]);
         } catch {
           failedCount++;
         }
-        URL.revokeObjectURL(staged.previewUrl);
+        if (staged.previewUrl) URL.revokeObjectURL(staged.previewUrl);
       }
       setStagedFiles([]);
 
       if (failedCount > 0) {
         setError(
-          `Site created, but ${failedCount} photo${failedCount > 1 ? "s" : ""} failed to upload — add ${
+          `Site created, but ${failedCount} file${failedCount > 1 ? "s" : ""} failed to upload — add ${
             failedCount > 1 ? "them" : "it"
           } again below.`
         );
@@ -213,7 +230,7 @@ export function SiteFormPanel({
 
   function handleClose() {
     // The site may already exist in the DB (created mid-session) even if this panel never
-    // reached a clean "all photos uploaded" success — make sure the list/map reflect that
+    // reached a clean "all files uploaded" success — make sure the list/map reflect that
     // instead of silently dropping it when the user backs out.
     if (createdSite) onSaved({ ...createdSite, files });
     else onCancel();
@@ -245,16 +262,25 @@ export function SiteFormPanel({
           {files.map((f) => (
             <FileThumb
               key={f.id}
-              url={resolveImageUrl(f.url)}
+              url={resolveFileUrl(f.url)}
+              filename={f.filename}
+              mimeType={f.mimeType}
+              isCover={f.isCover}
               onDelete={canManage ? () => handleDeleteFile(f) : undefined}
               busy={deletingFileId === f.id}
             />
           ))}
           {pendingUploads.map((p) => (
-            <FileThumb key={p.tempId} url={p.previewUrl} busy />
+            <FileThumb key={p.tempId} url={p.previewUrl} filename={p.filename} busy />
           ))}
           {stagedFiles.map((s, i) => (
-            <FileThumb key={s.previewUrl} url={s.previewUrl} onDelete={() => removeStagedFile(i)} />
+            <FileThumb
+              key={s.previewUrl ?? s.filename + i}
+              url={s.previewUrl}
+              filename={s.filename}
+              mimeType={s.mimeType}
+              onDelete={() => removeStagedFile(i)}
+            />
           ))}
         </div>
       )}
@@ -273,12 +299,12 @@ export function SiteFormPanel({
           }`}
         >
           <span className="text-xl">☁️</span>
-          <p className="text-sm font-medium text-slate-700">Add photos</p>
-          <p className="text-xs text-slate-500">Compressed to under 100KB · GPS auto-extracted</p>
+          <p className="text-sm font-medium text-slate-700">Add photos or PDFs</p>
+          <p className="text-xs text-slate-500">Photos compressed to under 100KB · GPS auto-extracted</p>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             onChange={(e) => {
               if (e.target.files?.length) handleAddFiles(e.target.files);
@@ -381,16 +407,44 @@ export function SiteFormPanel({
 
 function FileThumb({
   url,
+  filename,
+  mimeType,
+  isCover,
   onDelete,
   busy,
 }: {
   url: string | null;
+  filename: string;
+  mimeType?: string;
+  isCover?: boolean;
   onDelete?: () => void;
   busy?: boolean;
 }) {
+  const isImage = mimeType ? isImageType(mimeType) : !!url;
+
+  const body = isImage && url ? (
+    <img src={url} alt="" className="h-full w-full object-cover" />
+  ) : (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1 text-center">
+      <span className="text-xl">📄</span>
+      <span className="w-full truncate text-[10px] text-slate-500">{filename}</span>
+    </div>
+  );
+
   return (
     <div className="group relative aspect-square overflow-hidden rounded-lg bg-surface-muted">
-      {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+      {url && !isImage ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
+          {body}
+        </a>
+      ) : (
+        body
+      )}
+      {isCover && (
+        <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] leading-4 text-white">
+          Cover
+        </span>
+      )}
       {busy && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
           <Spinner />
@@ -401,7 +455,7 @@ function FileThumb({
           type="button"
           onClick={onDelete}
           className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
-          aria-label="Remove photo"
+          aria-label="Remove file"
         >
           ×
         </button>
