@@ -20,6 +20,13 @@ export interface ImageMetadata {
   gps?: { latitude: number; longitude: number } | null;
 }
 
+export interface SiteFile {
+  id: string;
+  url: string;
+  metadata: ImageMetadata | null;
+  createdAt: string;
+}
+
 export interface Site {
   id: string;
   userId: string;
@@ -29,8 +36,7 @@ export interface Site {
   constructionStatus: ConstructionStatus;
   latitude: number | null;
   longitude: number | null;
-  imageUrl: string | null;
-  imageMetadata: ImageMetadata | null;
+  files: SiteFile[];
   createdAt: string;
   updatedAt: string;
 }

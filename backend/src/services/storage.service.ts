@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "../config/env";
 
 const UPLOADS_DIR = path.join(__dirname, "..", "..", "uploads");
@@ -36,14 +36,23 @@ async function deleteLocal(urlOrPath: string) {
   await fs.unlink(path.join(UPLOADS_DIR, storedName)).catch(() => {});
 }
 
-/** Only used for Supabase deletes — uploads go straight from the browser to Supabase Storage via tus, bypassing this service. */
 async function deleteSupabase(url: string) {
   const key = url.replace(`${env.SUPABASE_PUBLIC_URL}/`, "");
   await supabaseStorageClient!.send(new DeleteObjectCommand({ Bucket: env.SUPABASE_BUCKET, Key: key }));
 }
 
-export async function uploadFile(buffer: Buffer, filename: string) {
-  return uploadLocal(buffer, filename);
+async function uploadSupabase(buffer: Buffer, filename: string, contentType?: string) {
+  const key = sanitizeFilename(filename);
+  await supabaseStorageClient!.send(
+    new PutObjectCommand({ Bucket: env.SUPABASE_BUCKET, Key: key, Body: buffer, ContentType: contentType })
+  );
+  return `${env.SUPABASE_PUBLIC_URL}/${key}`;
+}
+
+export async function uploadFile(buffer: Buffer, filename: string, contentType?: string) {
+  return env.STORAGE_DRIVER === "supabase"
+    ? uploadSupabase(buffer, filename, contentType)
+    : uploadLocal(buffer, filename);
 }
 
 export async function deleteFile(urlOrPath: string) {

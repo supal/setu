@@ -1,14 +1,40 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, resolveImageUrl } from "../../api/client";
 import { extractClientMetadata } from "../../lib/exif";
-import { isTusUploadMode, uploadSiteImage } from "../../lib/upload";
-import type { ConstructionStatus, ImageMetadata, Site } from "../../types";
+import { compressImage } from "../../lib/compressImage";
+import type { ConstructionStatus, ImageMetadata, Site, SiteFile } from "../../types";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 import { SiteMap } from "./SiteMap";
 
 type PanelMode = { type: "create" } | { type: "edit"; site: Site };
+
+interface StagedFile {
+  file: File;
+  metadata: ImageMetadata;
+  previewUrl: string;
+}
+
+interface PendingUpload {
+  tempId: string;
+  previewUrl: string;
+}
+
+async function uploadCompressedFile(siteId: string, file: File, metadata: ImageMetadata): Promise<SiteFile> {
+  const formData = new FormData();
+  formData.set("image", file);
+  formData.set("metadata", JSON.stringify(metadata));
+  const res = await api.postForm<{ file: SiteFile }>(`/api/sites/${siteId}/files`, formData);
+  return res.file;
+}
+
+async function prepareFile(original: File) {
+  const metadata = await extractClientMetadata(original);
+  const compressed = await compressImage(original);
+  return { compressed, metadata };
+}
 
 export function SiteFormPanel({
   mode,
@@ -35,47 +61,85 @@ export function SiteFormPanel({
   onDeleted: (id: string) => void;
   onCancel: () => void;
 }) {
-  const editingSite = mode.type === "edit" ? mode.site : null;
+  const propSite = mode.type === "edit" ? mode.site : null;
 
-  const [name, setName] = useState(editingSite?.name ?? "");
-  const [address, setAddress] = useState(editingSite?.address ?? "");
-  const [status, setStatus] = useState<ConstructionStatus>(editingSite?.constructionStatus ?? "planned");
-  const [file, setFile] = useState<File | null>(null);
-  const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [name, setName] = useState(propSite?.name ?? "");
+  const [address, setAddress] = useState(propSite?.address ?? "");
+  const [status, setStatus] = useState<ConstructionStatus>(propSite?.constructionStatus ?? "planned");
+
+  // Set once a site is created mid-session (create mode → some/all staged photos uploaded);
+  // from then on this panel behaves like it's editing that site, even though `mode` prop is
+  // still "create". Lets a partial photo-upload failure keep the panel open for retry instead
+  // of silently losing track of it.
+  const [createdSite, setCreatedSite] = useState<Site | null>(null);
+  const activeSite = createdSite ?? propSite;
+
+  const [files, setFiles] = useState<SiteFile[]>(propSite?.files ?? []);
+  const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingSite, setDeletingSite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(
-    editingSite?.imageUrl ? resolveImageUrl(editingSite.imageUrl) : null
-  );
+  const stagedFilesRef = useRef(stagedFiles);
+  stagedFilesRef.current = stagedFiles;
+  useEffect(() => () => stagedFilesRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl)), []);
 
-  useEffect(() => {
-    if (!file) return;
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
+  async function handleAddFiles(selected: FileList | File[]) {
+    if (!canManage) return;
+    for (const original of Array.from(selected)) {
+      const { compressed, metadata } = await prepareFile(original);
+      if (metadata.gps && !latitude && !longitude) {
+        onLatLngChange(metadata.gps.latitude, metadata.gps.longitude);
+      }
 
-  async function handleFile(selected: File | null) {
-    setFile(selected);
-    setImageMetadata(null);
-    if (!selected) return;
+      if (activeSite) {
+        const tempId = crypto.randomUUID();
+        const previewUrl = URL.createObjectURL(compressed);
+        setPendingUploads((prev) => [...prev, { tempId, previewUrl }]);
+        try {
+          const uploaded = await uploadCompressedFile(activeSite.id, compressed, metadata);
+          setFiles((prev) => [uploaded, ...prev]);
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : "Failed to upload photo");
+        } finally {
+          setPendingUploads((prev) => prev.filter((p) => p.tempId !== tempId));
+          URL.revokeObjectURL(previewUrl);
+        }
+      } else {
+        setStagedFiles((prev) => [...prev, { file: compressed, metadata, previewUrl: URL.createObjectURL(compressed) }]);
+      }
+    }
+  }
 
-    const meta = await extractClientMetadata(selected);
-    setImageMetadata(meta);
-    if (meta.gps && !latitude && !longitude) {
-      onLatLngChange(meta.gps.latitude, meta.gps.longitude);
+  function removeStagedFile(index: number) {
+    setStagedFiles((prev) => {
+      URL.revokeObjectURL(prev[index].previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  async function handleDeleteFile(file: SiteFile) {
+    if (!activeSite || !canManage) return;
+    setDeletingFileId(file.id);
+    try {
+      await api.delete(`/api/sites/${activeSite.id}/files/${file.id}`);
+      setFiles((prev) => prev.filter((f) => f.id !== file.id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete photo");
+    } finally {
+      setDeletingFileId(null);
     }
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-    const dropped = e.dataTransfer.files?.[0];
-    if (dropped) handleFile(dropped);
+    if (e.dataTransfer.files?.length) handleAddFiles(e.dataTransfer.files);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -84,45 +148,48 @@ export function SiteFormPanel({
     setError(null);
     setSubmitting(true);
     try {
-      const isEdit = mode.type === "edit";
-      const url = isEdit ? `/api/sites/${mode.site.id}` : "/api/sites";
+      const body = {
+        name,
+        address: address || undefined,
+        constructionStatus: status,
+        latitude: latitude || undefined,
+        longitude: longitude || undefined,
+      };
 
-      let site: Site;
-      if (isTusUploadMode) {
-        let imageUrl: string | undefined;
-        if (file) {
-          setUploadProgress(0);
-          imageUrl = await uploadSiteImage(file, setUploadProgress);
-          setUploadProgress(100);
-        }
-        const body = {
-          name,
-          address: address || undefined,
-          constructionStatus: status,
-          latitude: latitude || undefined,
-          longitude: longitude || undefined,
-          ...(imageUrl ? { imageUrl, imageMetadata } : {}),
-        };
-        const res = isEdit
-          ? await api.put<{ site: Site }>(url, body)
-          : await api.post<{ site: Site }>(url, body);
-        site = res.site;
-      } else {
-        const formData = new FormData();
-        formData.set("name", name);
-        if (address) formData.set("address", address);
-        formData.set("constructionStatus", status);
-        if (latitude) formData.set("latitude", latitude);
-        if (longitude) formData.set("longitude", longitude);
-        if (file) formData.set("image", file);
-        if (imageMetadata) formData.set("imageMetadata", JSON.stringify(imageMetadata));
-
-        const res = isEdit
-          ? await api.putForm<{ site: Site }>(url, formData)
-          : await api.postForm<{ site: Site }>(url, formData);
-        site = res.site;
+      if (activeSite) {
+        const res = await api.put<{ site: Site }>(`/api/sites/${activeSite.id}`, body);
+        onSaved(res.site);
+        return;
       }
-      onSaved(site);
+
+      const res = await api.post<{ site: Site }>("/api/sites", body);
+      const site = res.site;
+      setCreatedSite(site);
+
+      const uploaded: SiteFile[] = [];
+      let failedCount = 0;
+      for (const staged of stagedFiles) {
+        try {
+          const uploadedFile = await uploadCompressedFile(site.id, staged.file, staged.metadata);
+          uploaded.push(uploadedFile);
+          setFiles((prev) => [...prev, uploadedFile]);
+        } catch {
+          failedCount++;
+        }
+        URL.revokeObjectURL(staged.previewUrl);
+      }
+      setStagedFiles([]);
+
+      if (failedCount > 0) {
+        setError(
+          `Site created, but ${failedCount} photo${failedCount > 1 ? "s" : ""} failed to upload — add ${
+            failedCount > 1 ? "them" : "it"
+          } again below.`
+        );
+        return;
+      }
+
+      onSaved({ ...site, files: uploaded });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save site");
     } finally {
@@ -131,14 +198,25 @@ export function SiteFormPanel({
   }
 
   async function handleDelete() {
-    if (!editingSite || !canManage) return;
-    if (!confirm(`Delete ${editingSite.name}? This cannot be undone.`)) return;
+    if (!activeSite || !canManage) return;
+    if (!confirm(`Delete ${activeSite.name}? This cannot be undone.`)) return;
+    setDeletingSite(true);
     try {
-      await api.delete(`/api/sites/${editingSite.id}`);
-      onDeleted(editingSite.id);
+      await api.delete(`/api/sites/${activeSite.id}`);
+      onDeleted(activeSite.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to delete site");
+    } finally {
+      setDeletingSite(false);
     }
+  }
+
+  function handleClose() {
+    // The site may already exist in the DB (created mid-session) even if this panel never
+    // reached a clean "all photos uploaded" success — make sure the list/map reflect that
+    // instead of silently dropping it when the user backs out.
+    if (createdSite) onSaved({ ...createdSite, files });
+    else onCancel();
   }
 
   const draftCoords = {
@@ -149,14 +227,10 @@ export function SiteFormPanel({
   return (
     <form onSubmit={handleSubmit} className="flex h-full flex-col gap-4 overflow-y-auto">
       <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-sm text-slate-500 hover:text-slate-700 md:hidden"
-        >
+        <button type="button" onClick={handleClose} className="text-sm text-slate-500 hover:text-slate-700 md:hidden">
           ‹ Back
         </button>
-        <h2 className="text-lg font-semibold text-slate-900">{editingSite ? "Edit Site" : "Add New Site"}</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{activeSite ? "Edit Site" : "Add New Site"}</h2>
         <span className="w-10 md:hidden" />
       </div>
 
@@ -166,43 +240,54 @@ export function SiteFormPanel({
         </p>
       )}
 
-      <div
-        onDragOver={(e) => {
-          if (!canManage) return;
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={canManage ? handleDrop : undefined}
-        onClick={() => canManage && fileInputRef.current?.click()}
-        className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
-          canManage ? "cursor-pointer" : "cursor-not-allowed opacity-60"
-        } ${isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"}`}
-      >
-        {previewUrl ? (
-          <img src={previewUrl} alt="Preview" className="h-24 w-24 rounded-lg object-cover" />
-        ) : (
-          <span className="text-2xl">☁️</span>
-        )}
-        <p className="text-sm font-medium text-slate-700">Drag Photo · Resumable Upload</p>
-        <p className="text-xs text-slate-500">(Auto-extract GPS) — or click to choose a file</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          disabled={!canManage}
-          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-          className="hidden"
-        />
-        {uploadProgress != null && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface">
-            <div
-              className="h-full rounded-full bg-brand-600 transition-all"
-              style={{ width: `${uploadProgress}%` }}
+      {(files.length > 0 || pendingUploads.length > 0 || stagedFiles.length > 0) && (
+        <div className="grid grid-cols-4 gap-2">
+          {files.map((f) => (
+            <FileThumb
+              key={f.id}
+              url={resolveImageUrl(f.url)}
+              onDelete={canManage ? () => handleDeleteFile(f) : undefined}
+              busy={deletingFileId === f.id}
             />
-          </div>
-        )}
-      </div>
+          ))}
+          {pendingUploads.map((p) => (
+            <FileThumb key={p.tempId} url={p.previewUrl} busy />
+          ))}
+          {stagedFiles.map((s, i) => (
+            <FileThumb key={s.previewUrl} url={s.previewUrl} onDelete={() => removeStagedFile(i)} />
+          ))}
+        </div>
+      )}
+
+      {canManage && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 border-dashed p-3 text-center transition-colors ${
+            isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"
+          }`}
+        >
+          <span className="text-xl">☁️</span>
+          <p className="text-sm font-medium text-slate-700">Add photos</p>
+          <p className="text-xs text-slate-500">Compressed to under 100KB · GPS auto-extracted</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              if (e.target.files?.length) handleAddFiles(e.target.files);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+        </div>
+      )}
 
       <Input
         id="site-name"
@@ -270,25 +355,58 @@ export function SiteFormPanel({
       {error && <p className="text-sm text-status-danger-text">{error}</p>}
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-        {editingSite && canManage ? (
-          <Button type="button" variant="danger" onClick={handleDelete}>
-            Delete
+        {activeSite && canManage ? (
+          <Button type="button" variant="danger" onClick={handleDelete} disabled={deletingSite}>
+            {deletingSite && <Spinner />}
+            {deletingSite ? "Deleting…" : "Delete"}
           </Button>
         ) : (
           <span />
         )}
         <div className="flex gap-2">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancel
+          <Button type="button" variant="secondary" onClick={handleClose}>
+            {createdSite ? "Done" : "Cancel"}
           </Button>
           {canManage && (
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : editingSite ? "Save changes" : "Create site"}
+              {submitting && <Spinner />}
+              {submitting ? "Saving…" : activeSite ? "Save changes" : "Create site"}
             </Button>
           )}
         </div>
       </div>
     </form>
+  );
+}
+
+function FileThumb({
+  url,
+  onDelete,
+  busy,
+}: {
+  url: string | null;
+  onDelete?: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <div className="group relative aspect-square overflow-hidden rounded-lg bg-surface-muted">
+      {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+      {busy && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+          <Spinner />
+        </div>
+      )}
+      {onDelete && !busy && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+          aria-label="Remove photo"
+        >
+          ×
+        </button>
+      )}
+    </div>
   );
 }
 

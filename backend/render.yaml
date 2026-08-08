@@ -9,6 +9,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: DIRECT_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: CRON_SECRET
@@ -24,8 +26,7 @@ services:
       - key: NODE_ENV
         value: production
       # Render's free web services have an ephemeral filesystem — local uploads
-      # are wiped on every deploy/restart. Use Supabase Storage in production; the
-      # frontend's VITE_UPLOAD_MODE must be set to "tus" to match.
+      # are wiped on every deploy/restart. Use Supabase Storage in production.
       - key: STORAGE_DRIVER
         value: supabase
       - key: SUPABASE_PROJECT_REF

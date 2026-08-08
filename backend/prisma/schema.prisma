@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -39,12 +40,28 @@ model Site {
   constructionStatus String   @default("planned") @map("construction_status")
   latitude           Float?
   longitude          Float?
+  // Deprecated in favor of `files` — kept until prisma/backfillFiles.ts has copied every
+  // non-null value into a File row and that's been confirmed, then dropped in a follow-up
+  // migration. Not read or written by the app anymore.
   imageUrl           String?  @map("image_url")
   imageMetadata      Json?    @map("image_metadata")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
+  files File[]
+
   @@map("sites")
+}
+
+model File {
+  id        String   @id @default(uuid())
+  siteId    String   @map("site_id")
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  url       String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("files")
 }
 
 model AuditLog {

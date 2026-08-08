@@ -17,11 +17,8 @@ interface CleanupResult {
 }
 
 async function referencedKeys(): Promise<Set<string>> {
-  const sites = await prisma.site.findMany({
-    where: { imageUrl: { not: null } },
-    select: { imageUrl: true },
-  });
-  return new Set(sites.map((s) => s.imageUrl!));
+  const files = await prisma.file.findMany({ select: { url: true } });
+  return new Set(files.map((f) => f.url));
 }
 
 async function cleanupLocalOrphans(): Promise<CleanupResult> {

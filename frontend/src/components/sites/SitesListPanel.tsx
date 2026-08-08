@@ -81,9 +81,9 @@ export function SitesListPanel({
                     selectedSiteId === site.id ? "bg-brand-50" : ""
                   }`}
                 >
-                  {site.imageUrl ? (
+                  {site.files[0] ? (
                     <img
-                      src={resolveImageUrl(site.imageUrl) ?? undefined}
+                      src={resolveImageUrl(site.files[0].url) ?? undefined}
                       alt={site.name}
                       className="h-10 w-10 shrink-0 rounded-lg object-cover"
                     />

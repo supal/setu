@@ -13,7 +13,9 @@ export type AuditAction =
   | "DELETE_USER"
   | "CREATE_SITE"
   | "UPDATE_SITE"
-  | "DELETE_SITE";
+  | "DELETE_SITE"
+  | "ADD_FILE"
+  | "DELETE_FILE";
 
 interface RecordAuditInput {
   actorId: string | null;

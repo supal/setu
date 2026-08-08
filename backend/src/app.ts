@@ -9,19 +9,6 @@ import sitesRoutes from "./routes/sites.routes";
 import auditLogsRoutes from "./routes/auditLogs.routes";
 import cronRoutes from "./routes/cron.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-import { createTusServer, UPLOADS_PATH } from "./lib/tus";
-
-const TUS_HEADERS = [
-  "Location",
-  "Upload-Offset",
-  "Upload-Length",
-  "Upload-Metadata",
-  "Tus-Resumable",
-  "Tus-Version",
-  "Tus-Extension",
-  "Tus-Max-Size",
-  "X-Image-Public-Url",
-];
 
 export function createApp() {
   const app = express();
@@ -33,8 +20,7 @@ export function createApp() {
     cors({
       origin: env.FRONTEND_URL,
       credentials: true,
-      allowedHeaders: ["Content-Type", ...TUS_HEADERS],
-      exposedHeaders: TUS_HEADERS,
+      allowedHeaders: ["Content-Type"],
     })
   );
   app.use(express.json());
@@ -48,12 +34,6 @@ export function createApp() {
   app.use("/api/users", usersRoutes);
   app.use("/api/sites", sitesRoutes);
   app.use("/api/audit-logs", auditLogsRoutes);
-
-  if (env.STORAGE_DRIVER === "supabase") {
-    const tusServer = createTusServer();
-    app.all(UPLOADS_PATH, tusServer.handle.bind(tusServer));
-    app.all(`${UPLOADS_PATH}/*`, tusServer.handle.bind(tusServer));
-  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

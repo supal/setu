@@ -63,15 +63,15 @@ Log in with the seeded admin account, then use **Users → Add New User** to inv
 | `EMAIL_FROM` | From address for outgoing emails |
 | `FRONTEND_URL` | The frontend's origin — used for CORS and links in emails |
 | `PORT` | API port (default 4000) |
-| `STORAGE_DRIVER` | `local` (default, writes to `backend/uploads`, served over a single request) or `supabase` (Supabase Storage, uploaded directly from the browser via a resumable `tus` endpoint — required in production, see below) |
+| `STORAGE_DRIVER` | `local` (default, writes to `backend/uploads`) or `supabase` (uploads to Supabase Storage via its S3-compatible API — required in production, see below) |
 | `SUPABASE_PROJECT_REF` / `SUPABASE_S3_ACCESS_KEY_ID` / `SUPABASE_S3_SECRET_ACCESS_KEY` / `SUPABASE_S3_REGION` / `SUPABASE_BUCKET` / `SUPABASE_PUBLIC_URL` | Only needed when `STORAGE_DRIVER=supabase` — Supabase dashboard → Project Settings → Storage → S3 Connection |
+| `DIRECT_URL` | Only needed against Supabase — a direct (non-pooled) connection string `prisma migrate`/`db push` require; Supabase dashboard → Project Settings → Database → Connection string → "Direct connection" |
 
 ### Frontend (`frontend/.env.local`)
 
 | Variable | Purpose |
 |---|---|
 | `VITE_API_URL` | Base URL of the backend API |
-| `VITE_UPLOAD_MODE` | `local` (default, single-request upload — pair with backend `STORAGE_DRIVER=local`) or `tus` (chunked resumable upload straight to Supabase Storage — pair with `STORAGE_DRIVER=supabase`) |
 
 ## Deploying for free
 
@@ -97,7 +97,7 @@ Log in with the seeded admin account, then use **Users → Add New User** to inv
 ### Frontend — Netlify
 
 1. In Netlify, create a new site from the same repo — it will pick up `netlify.toml` at the repo root (base directory `frontend`).
-2. Set env vars: `VITE_API_URL` to your Render backend URL, and `VITE_UPLOAD_MODE=tus` (to match the backend's `STORAGE_DRIVER=supabase`).
+2. Set env vars: `VITE_API_URL` to your Render backend URL.
 3. Deploy. Note the resulting site URL (e.g. `https://sitetracker.netlify.app`).
 4. Go back to Render and set `FRONTEND_URL` to this Netlify URL, then redeploy the backend (needed for CORS and for links in emails to point to the right place).
 
@@ -125,13 +125,11 @@ An admin cannot delete or demote/deactivate their own account.
 
 ## Sites
 
-Each site has a name, address, construction status (`planned` / `in_progress` / `completed`), coordinates, and an optional photo.
+Each site has a name, address, construction status (`planned` / `in_progress` / `completed`), coordinates, and any number of photos (a `files` table, one-to-many off `sites` — deleting a site cascades to its files, including the objects in storage).
 
-Photo handling happens client-side first: as soon as a photo is selected, the browser extracts its EXIF metadata (dimensions, camera, timestamp, GPS) using `exifr` — if the photo has embedded GPS and you haven't typed coordinates in yet, they're filled in immediately, before anything uploads. A small Leaflet map in the form lets you click or drag a pin to set/override the location when a photo has no GPS data (or no photo at all).
+Photo handling happens client-side first: as soon as a photo is selected, the browser extracts its EXIF metadata (dimensions, camera, timestamp, GPS) using `exifr` — if the photo has embedded GPS and you haven't typed coordinates in yet, they're filled in immediately, before anything uploads. A small Leaflet map in the form lets you click or drag a pin to set/override the location when a photo has no GPS data (or no photo at all). The photo is then re-encoded client-side (canvas, iterative quality/size reduction) down to under 100KB and sent to the backend as a single request — no chunking — which writes it to `backend/uploads/` (`STORAGE_DRIVER=local`) or uploads it to the Supabase Storage bucket (`STORAGE_DRIVER=supabase`).
 
-How the photo itself gets uploaded depends on `VITE_UPLOAD_MODE`:
-- **`local`** (dev default): the file is sent to the backend in a single request and written to `backend/uploads/`.
-- **`tus`** (production): the file is uploaded in chunks directly from the browser to a Supabase Storage bucket (via its S3-compatible API) using a resumable `tus` protocol endpoint (`@tus/server` + `@tus/s3-store`) at `/api/uploads` — a dropped connection resumes rather than restarting. The backend only ever sees the resulting metadata and public URL, never the file bytes.
+A daily job (and an on-demand `POST /api/cron/cleanup-orphans`, guarded by `CRON_SECRET`) sweeps storage for files with no matching `files` row — a 24h grace period protects uploads still mid-flight.
 
 ## Audit log
 
