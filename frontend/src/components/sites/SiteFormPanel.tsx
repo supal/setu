@@ -257,64 +257,6 @@ export function SiteFormPanel({
         </p>
       )}
 
-      {(files.length > 0 || pendingUploads.length > 0 || stagedFiles.length > 0) && (
-        <div className="grid grid-cols-4 gap-2">
-          {files.map((f) => (
-            <FileThumb
-              key={f.id}
-              url={resolveFileUrl(f.url)}
-              filename={f.filename}
-              mimeType={f.mimeType}
-              isCover={f.isCover}
-              onDelete={canManage ? () => handleDeleteFile(f) : undefined}
-              busy={deletingFileId === f.id}
-            />
-          ))}
-          {pendingUploads.map((p) => (
-            <FileThumb key={p.tempId} url={p.previewUrl} filename={p.filename} busy />
-          ))}
-          {stagedFiles.map((s, i) => (
-            <FileThumb
-              key={s.previewUrl ?? s.filename + i}
-              url={s.previewUrl}
-              filename={s.filename}
-              mimeType={s.mimeType}
-              onDelete={() => removeStagedFile(i)}
-            />
-          ))}
-        </div>
-      )}
-
-      {canManage && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 border-dashed p-3 text-center transition-colors ${
-            isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"
-          }`}
-        >
-          <span className="text-xl">☁️</span>
-          <p className="text-sm font-medium text-slate-700">Add photos or PDFs</p>
-          <p className="text-xs text-slate-500">Photos compressed to under 100KB · GPS auto-extracted</p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf"
-            multiple
-            onChange={(e) => {
-              if (e.target.files?.length) handleAddFiles(e.target.files);
-              e.target.value = "";
-            }}
-            className="hidden"
-          />
-        </div>
-      )}
-
       <Input
         id="site-name"
         label="Name"
@@ -377,6 +319,64 @@ export function SiteFormPanel({
       <div className="h-48 md:hidden">
         <SiteMap sites={contextSites} draft={draftCoords} onPlaceDraft={onLatLngChange} compact />
       </div>
+
+      {(files.length > 0 || pendingUploads.length > 0 || stagedFiles.length > 0) && (
+        <div className="grid grid-cols-4 gap-2">
+          {files.map((f) => (
+            <FileThumb
+              key={f.id}
+              url={resolveFileUrl(f.url)}
+              filename={f.filename}
+              mimeType={f.mimeType}
+              isCover={f.isCover}
+              onDelete={canManage ? () => handleDeleteFile(f) : undefined}
+              busy={deletingFileId === f.id}
+            />
+          ))}
+          {pendingUploads.map((p) => (
+            <FileThumb key={p.tempId} url={p.previewUrl} filename={p.filename} busy />
+          ))}
+          {stagedFiles.map((s, i) => (
+            <FileThumb
+              key={s.previewUrl ?? s.filename + i}
+              url={s.previewUrl}
+              filename={s.filename}
+              mimeType={s.mimeType}
+              onDelete={() => removeStagedFile(i)}
+            />
+          ))}
+        </div>
+      )}
+
+      {canManage && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 border-dashed p-3 text-center transition-colors ${
+            isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"
+          }`}
+        >
+          <span className="text-xl">☁️</span>
+          <p className="text-sm font-medium text-slate-700">Add photos or PDFs</p>
+          <p className="text-xs text-slate-500">Photos compressed to under 100KB · GPS auto-extracted</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            onChange={(e) => {
+              if (e.target.files?.length) handleAddFiles(e.target.files);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+        </div>
+      )}
 
       {error && <p className="text-sm text-status-danger-text">{error}</p>}
 
