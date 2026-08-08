@@ -12,6 +12,7 @@ type PanelMode = { type: "create" } | { type: "edit"; site: Site };
 
 export function SiteFormPanel({
   mode,
+  canManage,
   latitude,
   longitude,
   onLatLngChange,
@@ -23,6 +24,7 @@ export function SiteFormPanel({
   onCancel,
 }: {
   mode: PanelMode;
+  canManage: boolean;
   latitude: string;
   longitude: string;
   onLatLngChange: (lat: number, lng: number) => void;
@@ -78,6 +80,7 @@ export function SiteFormPanel({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!canManage) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -128,7 +131,7 @@ export function SiteFormPanel({
   }
 
   async function handleDelete() {
-    if (!editingSite) return;
+    if (!editingSite || !canManage) return;
     if (!confirm(`Delete ${editingSite.name}? This cannot be undone.`)) return;
     try {
       await api.delete(`/api/sites/${editingSite.id}`);
@@ -157,17 +160,24 @@ export function SiteFormPanel({
         <span className="w-10 md:hidden" />
       </div>
 
+      {!canManage && (
+        <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-slate-500">
+          You can view this site, but only its owner or an admin can edit or delete it.
+        </p>
+      )}
+
       <div
         onDragOver={(e) => {
+          if (!canManage) return;
           e.preventDefault();
           setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
-          isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"
-        }`}
+        onDrop={canManage ? handleDrop : undefined}
+        onClick={() => canManage && fileInputRef.current?.click()}
+        className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+          canManage ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+        } ${isDragging ? "border-brand-500 bg-brand-50" : "border-border bg-surface-muted"}`}
       >
         {previewUrl ? (
           <img src={previewUrl} alt="Preview" className="h-24 w-24 rounded-lg object-cover" />
@@ -180,6 +190,7 @@ export function SiteFormPanel({
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          disabled={!canManage}
           onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
           className="hidden"
         />
@@ -193,11 +204,25 @@ export function SiteFormPanel({
         )}
       </div>
 
-      <Input id="site-name" label="Name" required value={name} onChange={(e) => setName(e.target.value)} />
-      <Input id="site-address" label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+      <Input
+        id="site-name"
+        label="Name"
+        required
+        disabled={!canManage}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <Input
+        id="site-address"
+        label="Address"
+        disabled={!canManage}
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+      />
       <Select
         id="site-status"
         label="Status"
+        disabled={!canManage}
         value={status}
         onChange={(e) => setStatus(e.target.value as ConstructionStatus)}
       >
@@ -207,8 +232,22 @@ export function SiteFormPanel({
       </Select>
 
       <div className="grid grid-cols-2 gap-3">
-        <CoordinateField label="Latitude" value={latitude} onChange={onLatitudeInput} min={-90} max={90} />
-        <CoordinateField label="Longitude" value={longitude} onChange={onLongitudeInput} min={-180} max={180} />
+        <CoordinateField
+          label="Latitude"
+          value={latitude}
+          onChange={onLatitudeInput}
+          min={-90}
+          max={90}
+          disabled={!canManage}
+        />
+        <CoordinateField
+          label="Longitude"
+          value={longitude}
+          onChange={onLongitudeInput}
+          min={-180}
+          max={180}
+          disabled={!canManage}
+        />
       </div>
 
       {latitude && longitude && (
@@ -231,7 +270,7 @@ export function SiteFormPanel({
       {error && <p className="text-sm text-status-danger-text">{error}</p>}
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-        {editingSite ? (
+        {editingSite && canManage ? (
           <Button type="button" variant="danger" onClick={handleDelete}>
             Delete
           </Button>
@@ -242,9 +281,11 @@ export function SiteFormPanel({
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Saving…" : editingSite ? "Save changes" : "Create site"}
-          </Button>
+          {canManage && (
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Saving…" : editingSite ? "Save changes" : "Create site"}
+            </Button>
+          )}
         </div>
       </div>
     </form>
@@ -257,12 +298,14 @@ function CoordinateField({
   onChange,
   min,
   max,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   min: number;
   max: number;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -278,9 +321,10 @@ function CoordinateField({
           min={min}
           max={max}
           value={value}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Not set"
-          className="w-full bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+          className="w-full bg-transparent text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
         />
       </div>
     </div>

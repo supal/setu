@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
 import sitesRoutes from "./routes/sites.routes";
 import auditLogsRoutes from "./routes/auditLogs.routes";
+import cronRoutes from "./routes/cron.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { createTusServer, UPLOADS_PATH } from "./lib/tus";
 
@@ -41,6 +42,7 @@ export function createApp() {
   app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.use("/api/cron", cronRoutes);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/users", usersRoutes);

@@ -14,6 +14,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().positive().default(4000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
+  // Shared secret an external scheduler (cron-job.org, GitHub Actions, etc.) presents to
+  // trigger POST /api/cron/cleanup-orphans without a logged-in session.
+  CRON_SECRET: z.string().min(16, "CRON_SECRET must be at least 16 characters"),
+
   STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
   SUPABASE_PROJECT_REF: z.string().optional(),
   SUPABASE_S3_ACCESS_KEY_ID: z.string().optional(),

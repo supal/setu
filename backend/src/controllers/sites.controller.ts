@@ -14,10 +14,8 @@ function assertAccess(req: Request, site: { userId: string }) {
   }
 }
 
-export async function listSites(req: Request, res: Response) {
-  const where = req.user!.role === "ADMIN" ? {} : { userId: req.user!.id };
+export async function listSites(_req: Request, res: Response) {
   const sites = await prisma.site.findMany({
-    where,
     orderBy: { createdAt: "desc" },
     include: { user: { select: { id: true, name: true, email: true } } },
   });
@@ -30,7 +28,6 @@ export async function getSite(req: Request, res: Response) {
     include: { user: { select: { id: true, name: true, email: true } } },
   });
   if (!site) throw new HttpError(404, "Site not found");
-  assertAccess(req, site);
   res.json({ site });
 }
 

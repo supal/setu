@@ -102,6 +102,7 @@ export function Sites() {
           <SiteFormPanel
             key={panelMode.type === "create" ? "create" : panelMode.site.id}
             mode={panelMode}
+            canManage={panelMode.type === "create" || isAdmin || panelMode.site.userId === user?.id}
             latitude={draftLat}
             longitude={draftLng}
             onLatLngChange={handleLatLngChange}
