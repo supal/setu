@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, resolveFileUrl } from "../../api/client";
-import { extractClientMetadata } from "../../lib/exif";
+import { extractClientMetadata, isMobileDevice } from "../../lib/exif";
 import { compressImage } from "../../lib/compressImage";
 import type { ConstructionStatus, ImageMetadata, Site, SiteFile } from "../../types";
 import { Button } from "../ui/Button";
@@ -379,7 +379,10 @@ export function SiteFormPanel({
         >
           <span className="text-xl">☁️</span>
           <p className="text-sm font-medium text-slate-700">Add photos or PDFs</p>
-          <p className="text-xs text-slate-500">Photos compressed to under 100KB · GPS auto-extracted</p>
+          <p className="text-xs text-slate-500">
+            Photos compressed to under 100KB
+            {!isMobileDevice && " · GPS auto-extracted"}
+          </p>
           <input
             ref={fileInputRef}
             type="file"
