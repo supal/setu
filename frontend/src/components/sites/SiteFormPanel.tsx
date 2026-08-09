@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, resolveFileUrl } from "../../api/client";
 import { extractClientMetadata, isMobileDevice } from "../../lib/exif";
 import { compressImage } from "../../lib/compressImage";
+import { ALLOWED_FILE_ACCEPT, ALLOWED_FILE_MIME_TYPES } from "../../lib/allowedFileTypes";
 import type { ConstructionStatus, ImageMetadata, Site, SiteFile } from "../../types";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -38,7 +39,8 @@ async function uploadFile(siteId: string, file: File, metadata: ImageMetadata): 
 }
 
 // Images get EXIF-extracted (for GPS auto-fill) and compressed to <100KB before upload; other
-// file types (PDFs) aren't images — neither operation applies, so they upload as-is.
+// allowed file types (PDFs, Office docs, text, zip) aren't images — neither operation
+// applies, so they upload as-is.
 async function prepareFile(original: File) {
   if (!isImageType(original.type)) {
     return { file: original, metadata: {} as ImageMetadata, previewUrl: null as string | null };
@@ -107,6 +109,11 @@ export function SiteFormPanel({
   async function handleAddFiles(selected: FileList | File[]) {
     if (!canManage) return;
     for (const original of Array.from(selected)) {
+      if (!(ALLOWED_FILE_MIME_TYPES as readonly string[]).includes(original.type)) {
+        setError(`${original.name} isn't a supported file type.`);
+        continue;
+      }
+
       // Shown the instant a file is picked, before EXIF/compression even starts — on a
       // large phone-camera photo that can take a few real seconds, and without this the
       // create-mode staging path (unlike the edit-mode upload path below) showed nothing
@@ -378,15 +385,15 @@ export function SiteFormPanel({
           }`}
         >
           <span className="text-xl">☁️</span>
-          <p className="text-sm font-medium text-slate-700">Add photos or PDFs</p>
+          <p className="text-sm font-medium text-slate-700">Add files</p>
           <p className="text-xs text-slate-500">
-            Photos compressed to under 100KB
+            Photos, PDFs, Office docs, text & zip · photos compressed to under 100KB
             {!isMobileDevice && " · GPS auto-extracted"}
           </p>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept={ALLOWED_FILE_ACCEPT}
             multiple
             onChange={(e) => {
               if (e.target.files?.length) handleAddFiles(e.target.files);
