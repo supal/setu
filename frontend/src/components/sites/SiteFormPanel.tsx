@@ -107,7 +107,14 @@ export function SiteFormPanel({
   async function handleAddFiles(selected: FileList | File[]) {
     if (!canManage) return;
     for (const original of Array.from(selected)) {
-      const { file, metadata, previewUrl } = await prepareFile(original);
+      let prepared: Awaited<ReturnType<typeof prepareFile>>;
+      try {
+        prepared = await prepareFile(original);
+      } catch {
+        setError(`Couldn't process ${original.name} — try a different photo or format.`);
+        continue;
+      }
+      const { file, metadata, previewUrl } = prepared;
       if (metadata.gps && !latitude && !longitude) {
         onLatLngChange(metadata.gps.latitude, metadata.gps.longitude);
       }
