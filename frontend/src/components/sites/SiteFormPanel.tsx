@@ -107,11 +107,20 @@ export function SiteFormPanel({
   async function handleAddFiles(selected: FileList | File[]) {
     if (!canManage) return;
     for (const original of Array.from(selected)) {
+      // Shown the instant a file is picked, before EXIF/compression even starts — on a
+      // large phone-camera photo that can take a few real seconds, and without this the
+      // create-mode staging path (unlike the edit-mode upload path below) showed nothing
+      // at all during that window, making a slow-but-working attach look identical to a
+      // silently failed one.
+      const tempId = crypto.randomUUID();
+      setPendingUploads((prev) => [...prev, { tempId, filename: original.name, previewUrl: null }]);
+
       let prepared: Awaited<ReturnType<typeof prepareFile>>;
       try {
         prepared = await prepareFile(original);
       } catch {
         setError(`Couldn't process ${original.name} — try a different photo or format.`);
+        setPendingUploads((prev) => prev.filter((p) => p.tempId !== tempId));
         continue;
       }
       const { file, metadata, previewUrl } = prepared;
@@ -120,8 +129,7 @@ export function SiteFormPanel({
       }
 
       if (activeSite) {
-        const tempId = crypto.randomUUID();
-        setPendingUploads((prev) => [...prev, { tempId, filename: original.name, previewUrl }]);
+        setPendingUploads((prev) => prev.map((p) => (p.tempId === tempId ? { ...p, previewUrl } : p)));
         try {
           const uploaded = await uploadFile(activeSite.id, file, metadata);
           setFiles((prev) => [uploaded, ...prev]);
@@ -136,6 +144,7 @@ export function SiteFormPanel({
           ...prev,
           { file, filename: original.name, mimeType: file.type, metadata, previewUrl },
         ]);
+        setPendingUploads((prev) => prev.filter((p) => p.tempId !== tempId));
       }
     }
   }
